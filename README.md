@@ -29,5 +29,6 @@ A high-performance, concurrent HTTP proxy server built from scratch in C++20. De
    ```bash
    docker logs cpp_proxy_engine
 
-License
-This project is open-source and intended for educational use.
+## License
+
+- This project is open-source and intended for educational use.
