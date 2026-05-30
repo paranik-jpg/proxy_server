@@ -20,7 +20,7 @@ A high-performance, concurrent HTTP proxy server built from scratch in C++20. De
 - **Worker Threads**: A predefined pool of worker threads consumes these tasks using a `std::condition_variable`, eliminating the overhead and potential memory exhaustion of spawning threads per connection.
 - **Fault Tolerance**: Each worker thread implements a socket-level timeout (`SO_RCVTIMEO`), ensuring that idle or dead connections do not block the system's throughput.
 
-# Challenges & Solutions
+### Challenges & Solutions
 - **Challenge**: Handling browser disconnections during data streaming.
 - **Solution** : Implemented robust error checking on `recv()` return values and verified descriptor closing to prevent socket leaks.
 
