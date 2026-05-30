@@ -1,6 +1,6 @@
 # Multi-Threaded C++ HTTP Proxy Server
 
-A high-performance, concurrent HTTP proxy server built from scratch in C++20. Designed to handle multiple incoming client requests while maintaining a flat memory footprint and ensuring graceful system termination.
+A high-performance, concurrent HTTP proxy server built from scratch in C++20. Designed to handle multiple incoming client requests while maintaining a flat memory footprint and ensuring graceful system termination. This server utilizes a Fixed-Capacity Thread Pool architecture to ensure predictable resource usage.
 
 ## Features
 - **Concurrent Request Handling**: Utilizes `std::jthread` and a thread-pool-like model to serve multiple clients without blocking.
@@ -14,6 +14,15 @@ A high-performance, concurrent HTTP proxy server built from scratch in C++20. De
 - **Concurrency**: C++20 `std::jthread` for lifecycle management.
 - **Parsing**: Custom HTTP request parser for URL and Host extraction.
 - **DNS**: Asynchronous lookups using `getaddrinfo`.
+
+## Concurrency Model
+- **Task Queuing**: Incoming client connections are wrapped as tasks and enqueued in a thread-safe `std::queue`.
+- **Worker Threads**: A predefined pool of worker threads consumes these tasks using a `std::condition_variable`, eliminating the overhead and potential memory exhaustion of spawning threads per connection.
+- **Fault Tolerance**: Each worker thread implements a socket-level timeout (`SO_RCVTIMEO`), ensuring that idle or dead connections do not block the system's throughput.
+
+# Challenges & Solutions
+- **Challenge**: Handling browser disconnections during data streaming.
+- **Solution** : Implemented robust error checking on `recv()` return values and verified descriptor closing to prevent socket leaks.
 
 ## Getting Started
 
