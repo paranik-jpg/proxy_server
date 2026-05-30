@@ -11,58 +11,10 @@
 #include <string>
 #include <algorithm>    // For to_string()
 #include <csignal>
-#include <queue>
-#include <condition_variable>
-#include <functional>
-
-class ThreadPool {
-private:
-    std::vector<std::thread> workers;        // Stores all worker threads
-    std::queue<std::function<void()>> tasks; // Queue of pending jobs (each of which is void)
-    std::mutex queueMtx;
-    std::condition_variable cv;
-    bool stop = false;                       // Tells whether the pool is shutting down
-
-public:
-    ThreadPool(size_t threads) {          // Threadpool constructor
-        for(size_t i=0; i<threads; ++i) { // Tranversing the all pool
-            workers.emplace_back([this] { // Capturing the pointer to the current ThreadPool object
-                while(true) {
-                    std::function<void()> task; // Temp var where worker stores the task it takes from the queue
-                    {
-                        std::unique_lock<std::mutex> lock(this->queueMtx);
-                        this->cv.wait(lock, [this]{ return this->stop || !this->tasks.empty(); }); // Lock until stop is true OR tasks is non-empty
-                        if(this->stop && this->tasks.empty()) return;
-                        task = std::move(this->tasks.front());                                     // Handed the first task from queue(tasks)
-                        this->tasks.pop();                                                         // Removed that task from tasks
-                    }
-                    task(); // Execute the DB operation
-                }
-            });
-        }
-    }
-
-    void enqueue(std::function<void()> task) { // Adds new work
-        {
-            std::lock_guard<std::mutex> lock(queueMtx);
-            tasks.push(std::move(task));
-        }
-        cv.notify_one();
-    }
-
-    ~ThreadPool() {        // Threadpool destructor
-        {
-            std::lock_guard<std::mutex> lock(queueMtx);
-            stop = true;
-        }
-        cv.notify_all();   // Wake up all threads so they can check the 'stop' flag
-        for(std::thread &worker : workers) {
-            worker.join(); // Wait for everyone to finish
-        }
-    }
-};
 
 int global_server_fd = -1;
+std::vector<std::jthread> active_threads;
+std::mutex thread_mutex; // Protects the vector from simultaneous access
 
 
 // Helper function to print messages without jumbled text
@@ -86,14 +38,18 @@ void signal_handler(int signum){
     exit(signum);
 }
 
+
+void cleanup_finished_threads() {
+    std::lock_guard<std::mutex> lock(thread_mutex);
+
+    // std::erase_if (C++20) removes threads that are no longer joinable (finished)
+    std::erase_if(active_threads, [](std::jthread& t){
+        return !t.joinable();
+    });
+}
+
+
 void handle_client(int client_fd){
-        // --- TIMEOUT LOGIC ---
-        struct timeval tv;
-        tv.tv_sec = 5;
-        tv.tv_usec = 0;
-        // This tells the kernel to stop waiting for data after 5 seconds AND free the thread
-        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-        // ---------------------
         // Buffer to store the incoming data
         char buffer[4096] = {0};
         // recv() pulls data from the Kernel into your application memory
@@ -186,8 +142,6 @@ int main() {
     // Register the shutdown handler immediately
     signal(SIGINT, signal_handler);
 
-    ThreadPool pool(8);
-
     safe_print(std::cout,"[PROXY] Initializing Proxy Server Engine...");
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     
@@ -241,11 +195,16 @@ int main() {
            continue;
         }
 
+        // 1. Clear out any dead threads to save memory
+        cleanup_finished_threads();
+
         safe_print(std::cout,"[THREADING] Spawning worker thread for FD: " + std::to_string(client_fd));
 
-        pool.enqueue([client_fd]() {
-            handle_client(client_fd);
-        });
+        // 2. Safely add the new worker to the active list
+        {
+            std::lock_guard<std::mutex> lock(thread_mutex);
+            active_threads.emplace_back(handle_client, client_fd);
+        }
     } 
     close(server_fd);
 
