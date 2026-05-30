@@ -3,7 +3,7 @@
 A high-performance, concurrent HTTP proxy server built from scratch in C++20. Designed to handle multiple incoming client requests while maintaining a flat memory footprint and ensuring graceful system termination. This server utilizes a Fixed-Capacity Thread Pool architecture to ensure predictable resource usage.
 
 ## Features
-- **Concurrent Request Handling**: Utilizes `std::jthread` and a thread-pool-like model to serve multiple clients without blocking.
+- **Concurrent Request Handling**: Utilizes a custom fixed-capacity Thread Pool to serve multiple clients efficiently, preventing resource exhaustion.
 - **Thread Safety**: Implements `std::mutex` and `lock_guard` for synchronized console logging and shared thread-tracking management.
 - **Robust Resource Management**: Uses RAII principles and manual POSIX socket management for efficient memory and file descriptor handling.
 - **Graceful Shutdown**: Includes a custom `SIGINT` (Ctrl+C) signal handler to ensure all master sockets are closed properly, preventing port-binding deadlocks.
@@ -11,7 +11,7 @@ A high-performance, concurrent HTTP proxy server built from scratch in C++20. De
 
 ## Technical Architecture
 - **Networking**: Built using raw POSIX socket APIs (`socket`, `bind`, `listen`, `accept`, `recv`, `send`).
-- **Concurrency**: C++20 `std::jthread` for lifecycle management.
+- **Concurrency**: Implements a custom ThreadPool using `std::condition_variable` and `std::mutex` for thread-safe task queuing.
 - **Parsing**: Custom HTTP request parser for URL and Host extraction.
 - **DNS**: Asynchronous lookups using `getaddrinfo`.
 
