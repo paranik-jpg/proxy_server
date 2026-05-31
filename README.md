@@ -30,7 +30,7 @@ A high-performance, concurrent HTTP proxy server built from scratch in C++20. De
 - Docker & Docker Compose installed.
 
 ### Running with Docker
-1. Clone the repository: `git clone <your-repo-url>`
+1. Clone the repository: `git clone https://github.com/paranik-jpg/proxy_server.git`
 2. Build and launch:
    ```bash
    docker compose up --build -d
