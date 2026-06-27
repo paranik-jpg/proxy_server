@@ -213,7 +213,7 @@ int main() {
     memset(&server_addr, 0, sizeof(server_addr)); // Clear memory to avoid garbage data
     server_addr.sin_family = AF_INET;             // IPv4
     server_addr.sin_addr.s_addr = INADDR_ANY;     // Listen on all network interfaces (localhost, Wi-Fi, etc.)
-    server_addr.sin_port = htons(8080);           // Convert 8080 to Network Byte Order
+    server_addr.sin_port = htons(8888);           // Convert 8080 to Network Byte Order
     
 
     // Bind the socket to the port
