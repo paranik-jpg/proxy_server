@@ -75,15 +75,28 @@ void ProxyServer::handleClient(int client_fd) {
                 send(remote_fd, buffer, valread, 0);
 
                 // 4. Clear the buffer to receive the internet server's response
-                memset(buffer, 0, 4096);
-                int remote_read;
-                // 5. Loop to receive all chunks of data
-                while ((remote_read  = recv(remote_fd, buffer, 4096, 0)) > 0){
-                    Logger::info("[RELAY] Received response from internet. Piping back to browser...");
+                memset(buffer, 0, sizeof(buffer));
 
-                    // Pipe each chunk back to the browser immediately
+                int remote_read;
+                size_t totalBytes = 0;
+                int chunks = 0;
+
+                // 5. Relay the response back to the client
+                while ((remote_read = recv(remote_fd, buffer, sizeof(buffer), 0)) > 0) {
                     send(client_fd, buffer, remote_read, 0);
+
+                    totalBytes += remote_read;
+                    chunks++;
                 }
+
+                // Log a summary instead of every chunk
+                Logger::info(
+                "[RELAY COMPLETE] Sent " +
+                std::to_string(totalBytes) +
+                " bytes in " +
+                std::to_string(chunks) +
+                " chunks."
+                );
             } else {
                 Logger::error("[ERROR]: Failed to connect to remote server!");
             }
