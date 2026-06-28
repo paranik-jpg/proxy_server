@@ -1,6 +1,6 @@
 # ProxyServer
 
-A high-performance, multi-threaded HTTP proxy server built from scratch in modern C++. The project demonstrates low-level network programming using POSIX sockets, concurrent request processing with a custom thread pool, modular software architecture, and efficient HTTP request forwarding.
+A high-performance, multi-threaded HTTP proxy server built from scratch in C++17. The project demonstrates low-level network programming using POSIX sockets, concurrent request processing with a custom thread pool, modular software architecture, and efficient HTTP request forwarding.
 
 ## Features
 
@@ -10,11 +10,20 @@ A high-performance, multi-threaded HTTP proxy server built from scratch in moder
 * **Request Forwarding**: Transparently forwards HTTP requests to remote servers and relays responses back to clients.
 * **Graceful Shutdown**: Handles `SIGINT` (Ctrl+C) to close the listening socket cleanly and prevent port binding issues.
 * **Thread-Safe Logging**: Centralized logging module for synchronized console output across worker threads.
-* **Socket Timeouts**: Prevents idle connections from blocking worker threads using `SO_RCVTIMEO`.
+* **Socket Timeouts**: Applies configurable receive timeouts to both client and upstream sockets using `SO_RCVTIMEO`, preventing stalled connections from blocking worker threads.
 * **Modular Architecture**: Organized into independent components for networking, parsing, threading, logging, and signal handling.
 * **Docker Support**: Includes Docker and Docker Compose configurations for reproducible deployment.
+* **Connection Relay**: Streams responses from remote servers back to clients in fixed-size chunks without buffering the entire response in memory.
 
 ---
+
+## Performance Characteristics
+
+- Fixed-size worker thread pool
+- O(1) task scheduling using a synchronized task queue
+- Streaming response relay with constant memory overhead
+- Thread-safe request processing
+- DNS resolution using POSIX `getaddrinfo()`
 
 ## Project Structure
 
@@ -70,9 +79,10 @@ ProxyServer/
 
 ### HTTP Processing
 
+* Request line parsing
+* Host header extraction
+* Default and custom port detection
 * URL extraction
-* Host header parsing
-* Port extraction
 * HTTP request forwarding
 
 ### DNS Resolution
@@ -115,10 +125,13 @@ The project follows the Single Responsibility Principle by separating concerns i
 
 ### Robust Resource Management
 
-* Automatic cleanup of sockets
-* Socket receive timeouts
-* Proper descriptor management
-* Safe shutdown on interruption
+* Automatic cleanup of socket descriptors
+* Proper `addrinfo` resource deallocation
+* Receive timeouts for client and upstream sockets
+* Graceful shutdown via signal handling
+* Error checking across networking operations
+
+The current implementation focuses on correctness, modularity, and concurrent request handling while providing a solid foundation for advanced proxy features such as caching, HTTPS tunneling, and persistent connections.
 
 ---
 
@@ -133,10 +146,9 @@ The project follows the Single Responsibility Principle by separating concerns i
 ### Build
 
 ```bash
-mkdir build
-cd build
-cmake ..
-make
+cmake -S . -B build
+cmake --build build
+./build/ProxyServer
 ```
 
 ### Run
@@ -157,6 +169,8 @@ Build and run using Docker Compose:
 docker compose up --build
 ```
 
+The proxy server will be available on **localhost:8888**.
+
 ---
 
 ## Future Improvements
@@ -167,15 +181,20 @@ docker compose up --build
 * Access logging
 * Blacklisting and filtering
 * Load balancing
-* Unit tests
+* Unit and integration tests
 * IPv6 support
+* HTTP/1.1 Keep-Alive support
+* Partial send() handling
+* HTTPS CONNECT tunneling
+* Response compression
 
 ---
 
 ## Technologies Used
 
 * C++17
-* POSIX Sockets
+* Linux System Programming
+* POSIX Socket API
 * CMake
 * Docker
 * STL

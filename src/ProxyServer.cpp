@@ -9,6 +9,7 @@
 #include <netdb.h>      // For addrinfo
 #include <unistd.h>     // Contains system utilities like close()
 #include <arpa/inet.h>  // For inet_ntoa()
+#include <cerrno>
 
 ProxyServer::ProxyServer(int port) : port(port), server_fd(-1), pool(8) {
 
@@ -20,12 +21,14 @@ void ProxyServer::handleClient(int client_fd) {
     tv.tv_sec = 5;
     tv.tv_usec = 0;
     // This tells the kernel to stop waiting for data after 5 seconds AND free the thread
-    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0){
+        Logger::error("[ERROR] Failed to set client socket timeout");
+    }
     // ---------------------
     // Buffer to store the incoming data
-    char buffer[4096] = {0};
+    char buffer[4096];
     // recv() pulls data from the Kernel into your application memory
-    int valread = recv(client_fd, buffer, 4096, 0);
+    int valread = recv(client_fd, buffer, sizeof(buffer), 0);
 
     // EDGE CASE GUARD: Did the browser disconnect or send nothing?
     if(valread <=0){
@@ -56,58 +59,96 @@ void ProxyServer::handleClient(int client_fd) {
     hints.ai_family = AF_INET;       // Support IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP
 
-    if(getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) == 0){
-        char ip_str[INET_ADDRSTRLEN];
-        struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
-        inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
-
-        Logger::info("[DNS RESOLVED]: " + std::string(ip_str));
-
-        // 1. Create a new socket to talk to the real internet server
-        int remote_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-        if(remote_fd >= 0){
-
-            // 2. Connect to the real target server (e.g., example.com:80)
-            if(connect(remote_fd, res->ai_addr, res->ai_addrlen) >= 0){
-                Logger::info("[SUCCESS] Connected to target remote server!");
-
-                // 3. Forward the browser's original request to the internet
-                send(remote_fd, buffer, valread, 0);
-
-                // 4. Clear the buffer to receive the internet server's response
-                memset(buffer, 0, sizeof(buffer));
-
-                int remote_read;
-                size_t totalBytes = 0;
-                int chunks = 0;
-
-                // 5. Relay the response back to the client
-                while ((remote_read = recv(remote_fd, buffer, sizeof(buffer), 0)) > 0) {
-                    send(client_fd, buffer, remote_read, 0);
-
-                    totalBytes += remote_read;
-                    chunks++;
-                }
-
-                // Log a summary instead of every chunk
-                Logger::info(
-                "[RELAY COMPLETE] Sent " +
-                std::to_string(totalBytes) +
-                " bytes in " +
-                std::to_string(chunks) +
-                " chunks."
-                );
-            } else {
-                Logger::error("[ERROR]: Failed to connect to remote server!");
-            }
-            // Always close your outbound descriptors
-            close(remote_fd);
-        }
-        // Free the memory allocated by getaddrinfo
-        freeaddrinfo(res);
-    } else {
-        Logger::error("[ERROR]: Could not resolve host!");
+    if(getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) {
+        Logger::error("[ERROR] Could not resolve host!");
+        close(client_fd);
+        return;
     }
+
+    
+    char ip_str[INET_ADDRSTRLEN];
+    struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+    inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+
+    Logger::info("[DNS RESOLVED]: " + std::string(ip_str));
+
+    // 1. Create a new socket to talk to the real internet server
+    int remote_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+    if(remote_fd < 0) {
+        Logger::error("[ERROR] Failed to create remote socket.");
+        freeaddrinfo(res);
+        close(client_fd);
+        return;
+    }
+
+    if(setsockopt(remote_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        Logger::error("[ERROR] Failed to set remote socket timeout");    
+    }
+
+    // 2. Connect to the real target server (e.g., example.com:80)
+    if(connect(remote_fd, res->ai_addr, res->ai_addrlen) >= 0){
+        Logger::info("[SUCCESS] Connected to target remote server!");
+
+        // 3. Forward the browser's original request to the internet
+        int sent = send(remote_fd, buffer, valread, 0);
+
+        if(sent < 0) {
+            Logger::error("[ERROR] Failed to send request to remote server.");
+            close(remote_fd);
+            freeaddrinfo(res);
+            close(client_fd);
+            return;
+        }
+
+        int remote_read;
+        size_t totalBytes = 0;
+        int chunks = 0;
+
+        // 4. Relay the response back to the client
+        while ((remote_read = recv(remote_fd, buffer, sizeof(buffer), 0)) > 0) {
+            if(send(client_fd, buffer, remote_read, 0) < 0) {
+                Logger::error("[ERROR] Failed to relay data to client.");
+                break;
+            }
+
+            totalBytes += remote_read;
+            chunks++;
+        }
+
+        if (remote_read == 0) {
+            Logger::info(
+            "[RELAY COMPLETE] Sent " +
+            std::to_string(totalBytes) +
+            " bytes in " +
+            std::to_string(chunks) +
+            " chunks."
+            );
+        }
+        else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            Logger::info(
+            "[RELAY COMPLETE] Connection timed out after sending " +
+            std::to_string(totalBytes) +
+            " bytes in " +
+            std::to_string(chunks) +
+            " chunks."
+            );
+        }
+        else {
+            Logger::error(
+            "[RELAY ERROR] recv() failed. errno = " +
+            std::to_string(errno)
+            );
+        }
+    } 
+    else {
+        Logger::error("[ERROR]: Failed to connect to remote server!");
+    }
+    // Always close your outbound descriptors
+    close(remote_fd);
+        
+    // Free the memory allocated by getaddrinfo
+    freeaddrinfo(res); 
 
     // Cleanup: Close descriptor
     close(client_fd);
