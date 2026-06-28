@@ -1,0 +1,29 @@
+# Build directory
+build/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Executables
+ProxyServer
+*.out
+
+# Logs
+*.log
+
+# Object files
+*.o
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.swp
+*.tmp

@@ -1,0 +1,166 @@
+#include "ProxyServer.h"
+#include "Logger.h"
+#include "SignalHandler.h"
+#include "HttpParser.h"
+
+#include <sys/socket.h> // Contains core socket system calls (socket, bind, listen, accept)
+#include <netinet/in.h> // Contains structures to store IP addresses and ports
+#include <cstring>      // For clearing memory structures (memset)
+#include <netdb.h>      // For addrinfo
+#include <unistd.h>     // Contains system utilities like close()
+#include <arpa/inet.h>  // For inet_ntoa()
+
+ProxyServer::ProxyServer(int port) : port(port), server_fd(-1), pool(8) {
+
+}
+
+void ProxyServer::handleClient(int client_fd) {
+    // --- TIMEOUT LOGIC ---
+    struct timeval tv;
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    // This tells the kernel to stop waiting for data after 5 seconds AND free the thread
+    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    // ---------------------
+    // Buffer to store the incoming data
+    char buffer[4096] = {0};
+    // recv() pulls data from the Kernel into your application memory
+    int valread = recv(client_fd, buffer, 4096, 0);
+
+    // EDGE CASE GUARD: Did the browser disconnect or send nothing?
+    if(valread <=0){
+        close(client_fd);
+        return;
+    }
+
+    // Safely create the string using EXACTLY the number of bytes read
+    std::string request(buffer, valread);
+        
+    std::string url = HttpParser::extractURL(request);
+    Logger::info("[PARSED URL]: " + url);
+
+    std::string host = HttpParser::extractHost(request);
+
+    if(host.empty()) {
+        close(client_fd);
+        return;
+    }
+
+    int target_port = HttpParser::extractPort(request);
+
+    std::string portStr = std::to_string(target_port);
+
+    // DNS Resolution (The "Phonebook" lookup)
+    struct addrinfo hints, *res;     // We want the system to resolve address
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;       // Support IPv4
+    hints.ai_socktype = SOCK_STREAM; // TCP
+
+    if(getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) == 0){
+        char ip_str[INET_ADDRSTRLEN];
+        struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+        inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+
+        Logger::info("[DNS RESOLVED]: " + std::string(ip_str));
+
+        // 1. Create a new socket to talk to the real internet server
+        int remote_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if(remote_fd >= 0){
+
+            // 2. Connect to the real target server (e.g., example.com:80)
+            if(connect(remote_fd, res->ai_addr, res->ai_addrlen) >= 0){
+                Logger::info("[SUCCESS] Connected to target remote server!");
+
+                // 3. Forward the browser's original request to the internet
+                send(remote_fd, buffer, valread, 0);
+
+                // 4. Clear the buffer to receive the internet server's response
+                memset(buffer, 0, 4096);
+                int remote_read;
+                // 5. Loop to receive all chunks of data
+                while ((remote_read  = recv(remote_fd, buffer, 4096, 0)) > 0){
+                    Logger::info("[RELAY] Received response from internet. Piping back to browser...");
+
+                    // Pipe each chunk back to the browser immediately
+                    send(client_fd, buffer, remote_read, 0);
+                }
+            } else {
+                Logger::error("[ERROR]: Failed to connect to remote server!");
+            }
+            // Always close your outbound descriptors
+            close(remote_fd);
+        }
+        // Free the memory allocated by getaddrinfo
+        freeaddrinfo(res);
+    } else {
+        Logger::error("[ERROR]: Could not resolve host!");
+    }
+
+    // Cleanup: Close descriptor
+    close(client_fd);
+}
+
+bool ProxyServer::start() {
+
+    Logger::info("[PROXY] Initializing Proxy Server Engine...");
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    
+    if (server_fd < 0) {
+        Logger::error("[ERROR] Failed to create socket system descriptor!");
+        return false;
+    }
+
+    // for keeping a copy
+    SignalHandler::registerHandler(server_fd);
+
+    int opt = 1;
+    // Forcefully attaching socket to the port 8080
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) < 0){
+        Logger::error("[ERROR]: setsockopt failed!");
+        return false;
+    }
+    Logger::info("[SUCCESS] Socket descriptor created. FD Number: " + std::to_string(server_fd));
+
+
+    // Define the server address structure
+    struct sockaddr_in server_addr;               // We are manually specifying an IPv4 address and port
+    memset(&server_addr, 0, sizeof(server_addr)); // Clear memory to avoid garbage data
+    server_addr.sin_family = AF_INET;             // IPv4
+    server_addr.sin_addr.s_addr = INADDR_ANY;     // Listen on all network interfaces (localhost, Wi-Fi, etc.)
+    server_addr.sin_port = htons(port);           // Convert 8080 to Network Byte Order
+    
+
+    // Bind the socket to the port
+    if(bind(server_fd, (struct sockaddr*)&server_addr,sizeof(server_addr))<0){
+        Logger::error("[ERROR] Failed to bind to port " + std::to_string(port) + "!");
+        return false;
+    }
+    Logger::info("[SUCCESS] Socket bound to port " + std::to_string(port));
+
+
+    // Start listening (10 is the backlog size - how many connections can wait in queue)
+    if(listen(server_fd,10)<0){
+        Logger::error("[ERROR] Failed to start listening!");
+        return false;
+    }
+    Logger::info("[INFO] Proxy server is now listening on port " + std::to_string(port) + "...");
+
+
+    while(true){
+        Logger::info("[WAITING] Ready for connection...");
+        // This will pause execution until a browser makes a request
+        int client_fd = accept(server_fd, nullptr, nullptr);
+        if(client_fd<0){
+           Logger::error("[ERROR] Failed to accept client connection!");
+           continue;
+        }
+
+        Logger::info("[THREADING] Spawning worker thread for FD: " + std::to_string(client_fd));
+
+        pool.enqueue([this, client_fd]() {
+            handleClient(client_fd);
+        });
+    } 
+
+    return true;
+}
