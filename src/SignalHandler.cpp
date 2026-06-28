@@ -14,10 +14,10 @@ void SignalHandler::signalHandler(int signum) {
     Logger::info("\n\n[SHUTDOWN] Ctrl+C intercepted! Commencing cleanup...");
 
     if(server_fd != -1){
-        Logger::info("[SHUTDOWN] Closing master socket on port 8080 cleanly.");
+        Logger::info("[SHUTDOWN] Closing master socket on port 8888 cleanly.");
         close(server_fd);
     }
 
-    Logger::info("[SHUTDOWN] Exiting process. Port 8080 freed instantly!");
+    Logger::info("[SHUTDOWN] Exiting process. Port 8888 freed instantly!");
     exit(signum);
 }
