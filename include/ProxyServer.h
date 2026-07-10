@@ -5,7 +5,7 @@
 
 class ProxyServer {
 public:
-    explicit ProxyServer(int port = 8888);
+    explicit ProxyServer(int port = 8888); // here declaration => Default value
 
     bool start();
 

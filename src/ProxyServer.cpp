@@ -11,7 +11,7 @@
 #include <arpa/inet.h>  // For inet_ntoa()
 #include <cerrno>
 
-ProxyServer::ProxyServer(int port) : port(port), server_fd(-1), pool(8) {
+ProxyServer::ProxyServer(int port) : port(port), server_fd(-1), pool(std::thread::hardware_concurrency()) {
 
 }
 
