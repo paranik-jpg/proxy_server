@@ -7,10 +7,10 @@ int SignalHandler::server_fd = -1;
 
 void SignalHandler::registerHandler(int fd) {
     server_fd = fd;
-    signal(SIGINT, SignalHandler::signalHandler);
+    signal(SIGINT, SignalHandler::signalHandler); // Trigerred when Ctrl + C, SIGINT => Ctrl + C
 }
 
-void SignalHandler::signalHandler(int signum) {
+void SignalHandler::signalHandler(int signum) {   // OS auto assigns signum = SIGINT
     Logger::info("\n\n[SHUTDOWN] Ctrl+C intercepted! Commencing cleanup...");
 
     if(server_fd != -1){

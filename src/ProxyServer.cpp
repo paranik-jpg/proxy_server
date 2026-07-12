@@ -38,7 +38,7 @@ void ProxyServer::handleClient(int client_fd) {
 
     // Safely create the string using EXACTLY the number of bytes read
     std::string request(buffer, valread);
-        
+
     std::string url = HttpParser::extractURL(request);
     Logger::info("[PARSED URL]: " + url);
 
@@ -65,7 +65,7 @@ void ProxyServer::handleClient(int client_fd) {
         return;
     }
 
-    
+
     char ip_str[INET_ADDRSTRLEN];
     struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
     inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
@@ -83,7 +83,7 @@ void ProxyServer::handleClient(int client_fd) {
     }
 
     if(setsockopt(remote_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-        Logger::error("[ERROR] Failed to set remote socket timeout");    
+        Logger::error("[ERROR] Failed to set remote socket timeout");
     }
 
     // 2. Connect to the real target server (e.g., example.com:80)
@@ -140,15 +140,15 @@ void ProxyServer::handleClient(int client_fd) {
             std::to_string(errno)
             );
         }
-    } 
+    }
     else {
         Logger::error("[ERROR]: Failed to connect to remote server!");
     }
     // Always close your outbound descriptors
     close(remote_fd);
-        
+
     // Free the memory allocated by getaddrinfo
-    freeaddrinfo(res); 
+    freeaddrinfo(res);
 
     // Cleanup: Close descriptor
     close(client_fd);
@@ -158,7 +158,7 @@ bool ProxyServer::start() {
 
     Logger::info("[PROXY] Initializing Proxy Server Engine...");
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    
+
     if (server_fd < 0) {
         Logger::error("[ERROR] Failed to create socket system descriptor!");
         return false;
@@ -168,11 +168,18 @@ bool ProxyServer::start() {
     SignalHandler::registerHandler(server_fd);
 
     int opt = 1;
-    // Forcefully attaching socket to the port 8080
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) < 0){
-        Logger::error("[ERROR]: setsockopt failed!");
+    // Forcefully binding socket to the port 8080
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        Logger::error("[ERROR]: Failed to enable SO_REUSEADDR!");
         return false;
     }
+
+    // Allowing multiple sockets to bind to port
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+        Logger::error("[ERROR]: Failed to enable SO_REUSEPORT!");
+        return false;
+    }
+
     Logger::info("[SUCCESS] Socket descriptor created. FD Number: " + std::to_string(server_fd));
 
 
@@ -180,31 +187,35 @@ bool ProxyServer::start() {
     struct sockaddr_in server_addr;               // We are manually specifying an IPv4 address and port
     memset(&server_addr, 0, sizeof(server_addr)); // Clear memory to avoid garbage data
     server_addr.sin_family = AF_INET;             // IPv4
-    server_addr.sin_addr.s_addr = INADDR_ANY;     // Listen on all network interfaces (localhost, Wi-Fi, etc.)
+    server_addr.sin_addr.s_addr = INADDR_ANY;     // Listen on all network interfaces (localhost, Wi-Fi, etc.) -> deeper => I.P.
     server_addr.sin_port = htons(port);           // Convert 8080 to Network Byte Order
-    
+
 
     // Bind the socket to the port
-    if(bind(server_fd, (struct sockaddr*)&server_addr,sizeof(server_addr))<0){
+    // Assigns an address to the socket
+    if(bind(server_fd, (struct sockaddr*)& server_addr, sizeof(server_addr)) < 0) { // bind accepts only sockaddr*
         Logger::error("[ERROR] Failed to bind to port " + std::to_string(port) + "!");
         return false;
     }
+
     Logger::info("[SUCCESS] Socket bound to port " + std::to_string(port));
 
 
-    // Start listening (10 is the backlog size - how many connections can wait in queue)
-    if(listen(server_fd,10)<0){
+    // Start listening (10 is the backlog size -> how many connections can wait in queue before refusal)
+    if(listen(server_fd, 10) < 0) {
         Logger::error("[ERROR] Failed to start listening!");
         return false;
     }
+
     Logger::info("[INFO] Proxy server is now listening on port " + std::to_string(port) + "...");
 
 
-    while(true){
+    while(true) {
         Logger::info("[WAITING] Ready for connection...");
         // This will pause execution until a browser makes a request
-        int client_fd = accept(server_fd, nullptr, nullptr);
-        if(client_fd<0){
+        int client_fd = accept(server_fd, nullptr, nullptr); // nullptr -> ignore client's address information
+        // client_fd is a new socket fd !!!
+        if(client_fd < 0) {
            Logger::error("[ERROR] Failed to accept client connection!");
            continue;
         }
@@ -214,7 +225,7 @@ bool ProxyServer::start() {
         pool.enqueue([this, client_fd]() {
             handleClient(client_fd);
         });
-    } 
+    }
 
     return true;
 }
