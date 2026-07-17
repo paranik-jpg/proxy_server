@@ -10,7 +10,6 @@ public:
     static std::string extractHost(const std::string& request);
 
     static int extractPort(const std::string& request);
-    
 };
 
 #endif

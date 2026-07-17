@@ -16,27 +16,30 @@ ProxyServer::ProxyServer(int port) : port(port), server_fd(-1), pool(std::thread
 }
 
 void ProxyServer::handleClient(int client_fd) {
+
     // --- TIMEOUT LOGIC ---
-    struct timeval tv;
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
+    struct timeval tv; // timeval is a struct to store time-interval value upto microsecond precision
+    tv.tv_sec = 5;     // Stores sec
+    tv.tv_usec = 0;    // Stores microsec
+
     // This tells the kernel to stop waiting for data after 5 seconds AND free the thread
-    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0){
+    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) { // setsockopt() takes char as option-val pointer
         Logger::error("[ERROR] Failed to set client socket timeout");
     }
     // ---------------------
+
     // Buffer to store the incoming data
     char buffer[4096];
     // recv() pulls data from the Kernel into your application memory
-    int valread = recv(client_fd, buffer, sizeof(buffer), 0);
+    int valread = recv(client_fd, buffer, sizeof(buffer), 0); // Returns number of bytes read
 
     // EDGE CASE GUARD: Did the browser disconnect or send nothing?
-    if(valread <=0){
+    if(valread <= 0) {
         close(client_fd);
         return;
     }
 
-    // Safely create the string using EXACTLY the number of bytes read
+    // Safely create the string using EXACTLY the number of bytes read !
     std::string request(buffer, valread);
 
     std::string url = HttpParser::extractURL(request);
@@ -222,7 +225,7 @@ bool ProxyServer::start() {
 
         Logger::info("[THREADING] Spawning worker thread for FD: " + std::to_string(client_fd));
 
-        pool.enqueue([this, client_fd]() {
+        pool.enqueue([this, client_fd]() { // 'this' is used to use 'handleClient()'
             handleClient(client_fd);
         });
     }
