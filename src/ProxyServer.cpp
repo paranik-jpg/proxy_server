@@ -130,45 +130,36 @@ void ProxyServer::handleClient(int client_fd) {
       return;
     }
 
-        int remote_read;
-        size_t totalBytes = 0;
-        int chunks = 0;
+    int remote_read;
+    size_t totalBytes = 0;
+    int chunks = 0;
 
-        // 4. Relay the response back to the client
-        while ((remote_read = recv(remote_fd, buffer, sizeof(buffer), 0)) > 0) {
-            if(send(client_fd, buffer, remote_read, 0) < 0) {
-                Logger::error("[ERROR] Failed to relay data to client.");
-                break;
-            }
-
-            totalBytes += remote_read;
-            chunks++;
+    // 4. Relay the response back to the client
+    while ((remote_read = recv(remote_fd, buffer, sizeof(buffer), 0)) > 0) {
+        if(send(client_fd, buffer, remote_read, 0) < 0) {
+            Logger::error("[ERROR] Failed to relay data to client.");
+            break;
         }
 
-        if (remote_read == 0) {
-            Logger::info(
-            "[RELAY COMPLETE] Sent " +
-            std::to_string(totalBytes) +
-            " bytes in " +
-            std::to_string(chunks) +
-            " chunks."
-            );
-        }
-        else if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            Logger::info(
-            "[RELAY COMPLETE] Connection timed out after sending " +
-            std::to_string(totalBytes) +
-            " bytes in " +
-            std::to_string(chunks) +
-            " chunks."
-            );
+        totalBytes += remote_read;
+        chunks++;
+    }
+
+    if (remote_read == 0) {
+        Logger::info("[RELAY COMPLETE] Sent " + std::to_string(totalBytes) + " bytes in " + std::to_string(chunks) + " chunks.");
+    }
+    else {
+        // EAGAIN -> Resource temporarily unavailable. Try again later.
+        // EWOULDBLOCK -> The operation would block if it continued.
+        // EAGAIN = EWOULDBLOCK on many systems!!!
+        if (errno == EAGAIN || errno == EWOULDBLOCK) { // errno -> thread-local integer variable maintained by the operating system.
+            Logger::info("[RELAY COMPLETE] Connection timed out after sending " + std::to_string(totalBytes) + " bytes in " + std::to_string(chunks) +
+            " chunks.");
         }
         else {
-            Logger::error(
-            "[RELAY ERROR] recv() failed. errno = " +
-            std::to_string(errno)
-            );
+            Logger::error("[RELAY ERROR] recv() failed. errno = " + std::to_string(errno));
         }
+    }
 
     // Always close your outbound descriptors
     close(remote_fd);
