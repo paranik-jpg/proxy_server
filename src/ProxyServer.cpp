@@ -12,7 +12,6 @@
 #include <cerrno>
 
 ProxyServer::ProxyServer(int port) : port(port), server_fd(-1), pool(std::thread::hardware_concurrency()) {
-
 }
 
 void ProxyServer::handleClient(int client_fd) {
@@ -62,47 +61,72 @@ void ProxyServer::handleClient(int client_fd) {
     hints.ai_family = AF_INET;       // Support IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP
 
-    if(getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) {
-        Logger::error("[ERROR] Could not resolve host!");
+
+    // By getaddrinfo, OS will filter addresses with 'hints' type and the result will be stored as a LL,
+    // res will point to the Head of that LL
+    if(getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) { // c_str() is same as (const char*)
+        Logger::error("[ERROR] Could not resolve host: " + host);
         close(client_fd);
         return;
     }
 
 
-    char ip_str[INET_ADDRSTRLEN];
-    struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
-    inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+    // 1. Try to connect to the real target server with fallback IPs
+    struct addrinfo* p;
+    int remote_fd = -1;
+    int connected = 0;
 
-    Logger::info("[DNS RESOLVED]: " + std::string(ip_str));
+    // Looping over LL
+    for(p = res; p != NULL; p = p->ai_next) {
+        // Create a new socket for this attempt
+        remote_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 
-    // 1. Create a new socket to talk to the real internet server
-    int remote_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-
-    if(remote_fd < 0) {
-        Logger::error("[ERROR] Failed to create remote socket.");
-        freeaddrinfo(res);
-        close(client_fd);
-        return;
-    }
-
-    if(setsockopt(remote_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-        Logger::error("[ERROR] Failed to set remote socket timeout");
-    }
-
-    // 2. Connect to the real target server (e.g., example.com:80)
-    if(connect(remote_fd, res->ai_addr, res->ai_addrlen) >= 0){
-        Logger::info("[SUCCESS] Connected to target remote server!");
-
-        // 3. Forward the browser's original request to the internet
-        int sent = send(remote_fd, buffer, valread, 0);
-
-        if(sent < 0) {
-            Logger::error("[ERROR] Failed to send request to remote server.");
-            close(remote_fd);
-            freeaddrinfo(res);
-            close(client_fd);
-            return;
+        if(remote_fd < 0) {
+          Logger::error(
+              "[WARN] Failed to create socket for this IP, trying next...");
+          continue;
         }
+
+        if(setsockopt(remote_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv) < 0)) {
+            Logger::error(
+                "[WARN] Failed to set remote socket timeout");
+        }
+
+        // 2. Try to connect to this IP
+        if(connect(remote_fd, p->ai_addr, p->ai_addrlen) == 0) {
+          char ip_str[INET_ADDRSTRLEN];
+          struct sockaddr_in* ipv4 = (struct sockaddr_in*)p->ai_addr;
+          inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+          Logger::info("[DNS RESOLVED & CONNECTED]: " + std::string(ip_str));
+          connected = 1;
+          break;
+        }
+
+        Logger::error("[WARN] Failed to connect to this IP, trying next...");
+        close(remote_fd);
+        remote_fd = -1;
+    }
+
+    freeaddrinfo(res);
+
+    if(!connected || remote_fd < 0) {
+      Logger::error("[ERROR] Failed to connect to any IP for host: " + host);
+      close(client_fd);
+      return;
+    }
+
+    Logger::info("[SUCCESS] Connected to target remote server!");
+
+    // 3. Forward the browser's original request to the internet
+    int sent = send(remote_fd, buffer, valread, 0);
+
+    if(sent < 0) {
+      Logger::error("[ERROR] Failed to send request to remote server.");
+      close(remote_fd);
+      freeaddrinfo(res);
+      close(client_fd);
+      return;
+    }
 
         int remote_read;
         size_t totalBytes = 0;
@@ -143,10 +167,7 @@ void ProxyServer::handleClient(int client_fd) {
             std::to_string(errno)
             );
         }
-    }
-    else {
-        Logger::error("[ERROR]: Failed to connect to remote server!");
-    }
+
     // Always close your outbound descriptors
     close(remote_fd);
 
