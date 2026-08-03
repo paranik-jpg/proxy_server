@@ -58,7 +58,7 @@ void ProxyServer::handleClient(int client_fd) {
 
 
     // DNS Resolution (The "Phonebook" lookup)
-    struct addrinfo hints, *res;     // We want the system to resolve address
+    struct addrinfo hints, *res;    // We want the system to resolve address
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;       // Support IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP
@@ -210,7 +210,7 @@ bool ProxyServer::start() {
 
 
     // Define the server address structure
-    struct sockaddr_in server_addr;               // We are manually specifying an IPv4 address and port
+    struct sockaddr_in server_addr;                 // We are manually specifying an IPv4 address and port
     memset(&server_addr, 0, sizeof(server_addr)); // Clear memory to avoid garbage data
     server_addr.sin_family = AF_INET;             // IPv4
     server_addr.sin_addr.s_addr = INADDR_ANY;     // Listen on all network interfaces (localhost, Wi-Fi, etc.) -> deeper => I.P.
