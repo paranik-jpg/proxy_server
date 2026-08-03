@@ -22,14 +22,15 @@ void ProxyServer::handleClient(int client_fd) {
     tv.tv_usec = 0;    // Stores microsec
 
     // This tells the kernel to stop waiting for data after 5 seconds AND free the thread
-    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) { // setsockopt() takes char as option-val pointer
+    // setsockopt() takes char as option-val pointer
+    if(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) {
         Logger::error("[ERROR] Failed to set client socket timeout");
     }
     // ---------------------
 
     // Buffer to store the incoming data
     char buffer[4096];
-    // recv() pulls data from the Kernel into your application memory
+    // recv() pulls data recieved from client_fd from the Kernel into your application memory
     int valread = recv(client_fd, buffer, sizeof(buffer), 0); // Returns number of bytes read
 
     // EDGE CASE GUARD: Did the browser disconnect or send nothing?
@@ -51,9 +52,10 @@ void ProxyServer::handleClient(int client_fd) {
         return;
     }
 
-    int target_port = HttpParser::extractPort(request);
 
+    int target_port = HttpParser::extractPort(request);
     std::string portStr = std::to_string(target_port);
+
 
     // DNS Resolution (The "Phonebook" lookup)
     struct addrinfo hints, *res;     // We want the system to resolve address
@@ -62,7 +64,7 @@ void ProxyServer::handleClient(int client_fd) {
     hints.ai_socktype = SOCK_STREAM; // TCP
 
 
-    // By getaddrinfo, OS will filter addresses with 'hints' type and the result will be stored as a LL,
+    // By getaddrinfo, OS will filter addresses with 'hints'-type and the result will be stored as a LL,
     // res will point to the Head of that LL
     if(getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) { // c_str() is same as (const char*)
         Logger::error("[ERROR] Could not resolve host: " + host);
@@ -87,7 +89,7 @@ void ProxyServer::handleClient(int client_fd) {
           continue;
         }
 
-        if(setsockopt(remote_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv) < 0)) {
+        if(setsockopt(remote_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
             Logger::error(
                 "[WARN] Failed to set remote socket timeout");
         }
