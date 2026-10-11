@@ -2,6 +2,8 @@
 #define HTTPPARSER_H
 
 #include <string>
+#include <algorithm>
+#include <cctype>
 
 class HttpParser {
 public:
