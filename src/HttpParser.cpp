@@ -173,16 +173,18 @@ int HttpParser::extractPort(const std::string& request) {
   std::string uri = getAbsoluteURI(request);
   std::string authority = getAbsoluteAuthority(request);
 
+  int default_port = 80;
+
   if (!uri.empty()) {
     // Absolute-form: default port depends on the scheme.
     if (authority.empty()) {
-      return 80;
+      return default_port;
     }
 
     size_t scheme_end = uri.find("://");
     std::string scheme = uri.substr(0, scheme_end);
 
-    int default_port = (scheme == "https") ? 443 : 80;
+    default_port = (scheme == "https") ? 443 : 80;
     // Reuse your existing IPv6 and hostname port-parsing logic,
     // but use default_port instead of 80 when no port is present.
   } else {
@@ -194,7 +196,7 @@ int HttpParser::extractPort(const std::string& request) {
     size_t closing_bracket = authority.find(']');
 
     if (closing_bracket == std::string::npos) {
-      return 80;
+      return default_port;
     }
 
     if(closing_bracket + 1 < authority.size() &&
@@ -202,7 +204,7 @@ int HttpParser::extractPort(const std::string& request) {
       return parsePort(authority.substr(closing_bracket + 2));
     }
 
-    return 80;
+    return default_port;
   }
 
   // Ordinary hostnome or IPv4: host:port
@@ -212,5 +214,5 @@ int HttpParser::extractPort(const std::string& request) {
     return parsePort(authority.substr(colon + 1));
   }
 
-  return 80;
+  return default_port;
 }

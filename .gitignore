@@ -1,5 +1,8 @@
 # Build directory
-build/
+build*/
+
+# Test scratch files
+index.html
 
 # CMake generated files
 CMakeCache.txt
