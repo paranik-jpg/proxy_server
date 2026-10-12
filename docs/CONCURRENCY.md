@@ -1,18 +1,17 @@
-## Bounded Task Queue and Backpressure
+# Concurrency & Thread Synchronization
 
-### Queue Capacity
-The thread pool uses a bounded task queue with a maximum capacity of **1,000 pending tasks**. This limit bounds the number of queued tasks, preventing unlimited queue growth under overload.
+## 1. Thread Pool Architecture
+* **Core Primitives:** Implemented using `std::vector<std::thread>`, `std::queue<std::function<void()>>`, `std::mutex`, and `std::condition_variable`.
+* **Worker Sizing:** Initialized using `std::thread::hardware_concurrency()` to avoid context-switching overhead on the host CPU.
 
-### Enqueue Timeout
-When the queue is full, an enqueue operation waits for up to **100 ms** for queue capacity to become available. If capacity becomes available before the timeout expires, the task is enqueued. Otherwise, the task is rejected.
+---
 
-### Overload Handling
-If enqueueing fails because the queue remains full until the timeout expires, the server rejects the connection task and returns **HTTP 503 Service Unavailable**, where an HTTP response can still be sent.
+## 2. Bounded Queue & Backpressure Mechanics
+* **Capacity Limit:** Queue capacity capped at 1,000 tasks.
+* **Backpressure Policy:** Submissions into a saturated queue wait for slot availability via a timed predicate (`std::chrono::milliseconds(100)`). If saturation persists, `enqueue()` returns `false`, causing `ProxyServer` to drop the client descriptor to safeguard process memory.
 
-Rejected tasks must not be silently discarded. The caller is responsible for handling the rejection and cleaning up any resources, including closing the client socket when ownership has not been transferred to the task.
+---
 
-### Shutdown Behavior
-When the thread pool begins shutting down, new tasks are rejected. Producers waiting for queue capacity are notified and must stop waiting. Workers drain already-queued tasks before exiting.
-
-### Resource Limits
-The queue capacity bounds pending tasks, not total memory usage or active connections. Additional limits on concurrent connections, request duration, and upstream I/O may be required to protect the server under sustained load.
+## 3. Failure Domain Isolation
+* **Task Boundary Protection:** Every dispatched task in worker threads is isolated inside a `try / catch (...)` block to prevent exceptions from bubbling up and invoking `std::terminate()`.
+* **Teardown Synchronization:** Destructor sets an atomic stop flag, notifies all waiting worker threads via `notify_all()`, and executes `worker.join()` across every thread.

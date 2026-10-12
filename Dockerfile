@@ -1,29 +1,32 @@
 # --- Stage 1: Build Environment ---
-FROM ubuntu:24.04 AS builder
+    FROM ubuntu:24.04 AS builder
 
-# Install core compiler and build tools
-RUN apt-get update && apt-get install -y \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+    # Install build chain and CMake
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+        g++ \
+        cmake \
+        make \
+        && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+    WORKDIR /app
 
-# Copy the entire directory over to build
-COPY . .
+    # Copy project files
+    COPY . .
 
-# Compile using C++20 and explicit thread links
-RUN g++ -std=c++20 -pthread src/main.cpp -o proxy_server
+    # Build release binary with logging gate
+    RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DENABLE_INFO_LOGGING=0 -O3" && \
+        cmake --build build -j$(nproc)
 
-# --- Stage 2: Runtime Environment ---
-FROM ubuntu:24.04
+    # --- Stage 2: Runtime Environment ---
+    FROM ubuntu:24.04
 
-WORKDIR /root/
+    WORKDIR /app
 
-#Pull ONLY the compiled binary file from the builder stage
-COPY --from=builder /app/proxy_server .
+    # Copy compiled executable from builder stage
+    COPY --from=builder /app/build/ProxyServer ./proxy_server
 
-# Expose port 8080 to matches your proxy setup
-EXPOSE 8080
+    # Expose internal listening port
+    EXPOSE 8888
 
-# Execute the engine
-CMD ["./proxy_server"]
+    # Run with explicit port argument
+    CMD ["./proxy_server", "8888"]

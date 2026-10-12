@@ -1,51 +1,98 @@
-# ProxyServer
+# High-Performance C++17 Multithreaded HTTP Proxy Server
 
-A high-performance, multi-threaded HTTP proxy server built from scratch in C++17. The project demonstrates low-level network programming using POSIX sockets, concurrent request processing with a custom thread pool, modular software architecture, and efficient HTTP request forwarding.
-
-## Features
-
-* **Multi-Threaded Request Processing**: Handles multiple client connections concurrently using a custom fixed-size thread pool.
-* **HTTP Request Parsing**: Extracts request URLs, target hosts, and ports through a dedicated HTTP parser.
-* **DNS Resolution**: Resolves domain names using the POSIX `getaddrinfo()` API before establishing outbound connections.
-* **Request Forwarding**: Transparently forwards HTTP requests to remote servers and relays responses back to clients.
-* **Graceful Shutdown**: Handles `SIGINT` (Ctrl+C) to close the listening socket cleanly and prevent port binding issues.
-* **Thread-Safe Logging**: Centralized logging module for synchronized console output across worker threads.
-* **Socket Timeouts**: Applies configurable receive timeouts to both client and upstream sockets using `SO_RCVTIMEO`, preventing stalled connections from blocking worker threads.
-* **Modular Architecture**: Organized into independent components for networking, parsing, threading, logging, and signal handling.
-* **Docker Support**: Includes Docker and Docker Compose configurations for reproducible deployment.
-* **Connection Relay**: Streams responses from remote servers back to clients in fixed-size chunks without buffering the entire response in memory.
+A hardened, high-throughput forward HTTP proxy server built from scratch in modern C++17 and Linux POSIX system calls. Engineered for low-level systems reliability, featuring a bounded producer-consumer thread pool with backpressure rejection, non-blocking signal handling, reliable stream socket transmission, and memory/file-descriptor leak validation using AddressSanitizer and Valgrind.
 
 ---
 
-## Performance Characteristics
+## Systems Architecture
 
-- Fixed-size worker thread pool
-- O(1) task scheduling using a synchronized task queue
-- Streaming response relay with constant memory overhead
-- Thread-safe request processing
-- DNS resolution using POSIX `getaddrinfo()`
+```
+               ┌────────────────────────────────────────────────────────┐
+               │                      ProxyServer                       │
+               │                                                        │
+Incoming       │  [ accept() ]                                          │
+Clients ───────┼────────┬───────────────────────────────────────────────┤
+               │        ▼                                               │
+               │  ThreadPool Queue (Capacity: 1,000, 100ms Timeout)     │
+               │        │                                               │
+               │  [Backpressure Drop on Saturation]                     │
+               │        │                                               │
+               │        ▼                                               │
+               │  Worker Threads (hardware_concurrency)                 │
+               │        │                                               │
+               │        ├── 1. Chunked recv() until \r\n\r\n (<= 8 KB)  │
+               │        ├── 2. HTTP Header & Port Parsing               │
+               │        ├── 3. POSIX getaddrinfo() DNS Resolution       │
+               │        ├── 4. Non-blocking/Timeout connect()           │
+               │        ├── 5. Reliable sendAll() (MSG_NOSIGNAL)        │
+               │        └── 6. Bidirectional Streaming Pass-Through     │
+               └──────────────────────────┬─────────────────────────────┘
+                                          │
+                                          ▼
+                                   Upstream Web Server
+```
+
+---
+
+## Core Engineering Invariants
+
+### 1. Robust Concurrency & Backpressure
+
+- **Fixed Worker Sizing:** Thread pool sized to `std::thread::hardware_concurrency()` to reduce unnecessary context switching and resource contention.
+- **Bounded Task Queue:** Limits the internal task queue to 1,000 tasks to prevent unbounded queue growth during connection bursts.
+- **Graceful Backpressure:** Uses a 100 ms condition-variable timeout on task submission; saturated requests are rejected and client file descriptors are closed cleanly.
+- **Failure Domain Isolation:** Dispatched worker tasks execute inside `try/catch` boundaries to prevent application exceptions from terminating worker threads.
+
+### 2. POSIX Sockets & Streaming Invariants
+
+- **Reliable Transmission (`sendAll`):** Loops over `send()` to handle partial writes and retries interrupted system calls (`EINTR`).
+- **Signal Safety:** Uses `MSG_NOSIGNAL` to suppress `SIGPIPE` on supported Linux systems, allowing socket errors such as `EPIPE` to be handled by the application.
+- **Request Header Limits:** Aggregates incoming bytes across packet boundaries until detecting the `\r\n\r\n` delimiter, with an 8 KB header-size ceiling.
+- **HTTP Parsing:** Supports case-insensitive header names, origin-form extraction, IPv6 authority bracket handling (`[::1]:port`), and port parsing.
+
+### 3. Diagnostics & Memory Validation
+
+- **Memory Integrity:** Uses AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) to detect memory errors and undefined behavior.
+- **Descriptor Lifecycle:** Uses Valgrind Memcheck with `--track-fds=yes` to inspect heap allocations and file-descriptor lifecycle.
+
+---
+
+## Empirical Performance Benchmarks
+
+Benchmarked using `wrk` on Linux x86-64 with `-O3 -DENABLE_INFO_LOGGING=0`.
+
+| Scenario | Concurrency | Threads | Throughput | Avg Latency | p50 Latency | p90 Latency | p99 Latency | Max Latency | Completed Requests |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| **Keep-Alive Baseline** | 50 | 4 | 176.20 req/s | 274.12 ms | 237.56 ms | 396.73 ms | 813.48 ms | 910.68 ms | 3,543 |
+| **Queue Saturation** | 500 | 8 | 141.30 req/s | 1.07 s | 1.02 s | 1.84 s | 1.98 s | 2.00 s | 4,254 |
+| **Connection Churn** | 200 | 8 | 105.33 req/s | 1.19 s | 1.15 s | 1.73 s | 1.99 s | 2.00 s | 3,171 |
+
+Full analysis, diagnostic traces, and socket lifecycle metrics are documented in [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
+
+---
 
 ## Project Structure
 
-```
-ProxyServer/
-│
+```text
+proxy_server/
+├── docs/
+│   ├── BENCHMARK.md          # wrk latency profiles and Valgrind audit logs
+│   ├── CONCURRENCY.md        # Thread pool synchronization and backpressure
+│   ├── NETWORK_INTERNALS.md  # Socket options, framing, and sendAll semantics
+│   └── BUILD_AND_LOGGING.md  # Build targets, sanitizers, and logging policy
 ├── include/
-│   ├── HttpParser.h
-│   ├── Logger.h
-│   ├── ProxyServer.h
-│   ├── SignalHandler.h
-│   └── ThreadPool.h
-│
+│   ├── HttpParser.h          # HTTP header and URI parsing interfaces
+│   ├── Logger.h              # Thread-safe logging
+│   ├── ProxyServer.h         # Server lifecycle and client socket orchestration
+│   ├── SignalHandler.h       # POSIX signal registration
+│   └── ThreadPool.h          # Bounded producer-consumer thread pool
 ├── src/
 │   ├── HttpParser.cpp
 │   ├── Logger.cpp
 │   ├── ProxyServer.cpp
 │   ├── SignalHandler.cpp
 │   ├── ThreadPool.cpp
-│   └── main.cpp
-│
-├── tests/
+│   └── main.cpp              # CLI port parser and server entry point
 ├── Dockerfile
 ├── docker-compose.yml
 ├── CMakeLists.txt
@@ -54,154 +101,70 @@ ProxyServer/
 
 ---
 
-## Technical Architecture
+## Build & Diagnostics
 
-### Networking
+### 1. Production / High-Throughput Build
 
-* POSIX Socket API
-
-  * `socket()`
-  * `bind()`
-  * `listen()`
-  * `accept()`
-  * `connect()`
-  * `recv()`
-  * `send()`
-  * `close()`
-
-### Concurrency
-
-* Custom fixed-size Thread Pool
-* `std::thread`
-* `std::mutex`
-* `std::condition_variable`
-* Thread-safe task queue
-
-### HTTP Processing
-
-* Request line parsing
-* Host header extraction
-* Default and custom port detection
-* URL extraction
-* HTTP request forwarding
-
-### DNS Resolution
-
-* `getaddrinfo()`
-* IPv4 support using `addrinfo`
-
----
-
-## Concurrency Model
-
-1. The proxy listens for incoming client connections.
-2. Each accepted connection is submitted as a task to the Thread Pool.
-3. Worker threads process requests independently.
-4. The request is parsed to determine the destination host and port.
-5. DNS resolution is performed.
-6. A connection to the remote server is established.
-7. The original request is forwarded.
-8. The remote response is streamed back to the client.
-
-This design avoids creating one thread per client, resulting in predictable memory usage and improved scalability.
-
----
-
-## Engineering Highlights
-
-### Custom Thread Pool
-
-A producer-consumer architecture backed by a thread-safe task queue enables efficient request scheduling while minimizing thread creation overhead.
-
-### Modular Design
-
-The project follows the Single Responsibility Principle by separating concerns into dedicated modules:
-
-* **ProxyServer** – Server lifecycle and client management
-* **ThreadPool** – Concurrent task execution
-* **HttpParser** – HTTP request parsing
-* **Logger** – Thread-safe logging
-* **SignalHandler** – Graceful process termination
-
-### Robust Resource Management
-
-* Automatic cleanup of socket descriptors
-* Proper `addrinfo` resource deallocation
-* Receive timeouts for client and upstream sockets
-* Graceful shutdown via signal handling
-* Error checking across networking operations
-
-The current implementation focuses on correctness, modularity, and concurrent request handling while providing a solid foundation for advanced proxy features such as caching, HTTPS tunneling, and persistent connections.
-
----
-
-## Build Instructions
-
-### Prerequisites
-
-* CMake 3.16+
-* GCC / Clang with C++17 support
-* Linux (POSIX socket APIs)
-
-### Build
+Optimized for performance benchmarking:
 
 ```bash
-cmake -S . -B build
-cmake --build build
-./build/ProxyServer
+cmake -B build -S . \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_FLAGS="-DENABLE_INFO_LOGGING=0 -O3"
+
+cmake --build build -j"$(nproc)"
+
+./build/ProxyServer 8888
 ```
 
-### Run
+### 2. Sanitizer Debug Build (ASan + UBSan)
+
+Instrumented with AddressSanitizer and UndefinedBehaviorSanitizer:
 
 ```bash
-./ProxyServer
+cmake -B build_asan -S . \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DENABLE_SANITIZERS=ON
+
+cmake --build build_asan -j"$(nproc)"
+
+ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
+  ./build_asan/ProxyServer 8888
 ```
 
-The server listens on **port 8888** by default.
+### 3. Valgrind File-Descriptor & Memory Audit
+
+```bash
+valgrind --tool=memcheck \
+  --leak-check=full \
+  --show-leak-kinds=all \
+  --track-fds=yes \
+  ./build/ProxyServer 8888
+```
 
 ---
 
-## Docker
+## Containerized Deployment
 
-Build and run using Docker Compose:
+Build and start the application using Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-The proxy server will be available on **localhost:8888**.
+The server is intended to listen on port `8888` for this configuration. Ensure the Dockerfile, Compose port mapping, and application listening port agree.
 
 ---
 
-## Future Improvements
+## Future Roadmap
 
-* HTTPS `CONNECT` tunneling
-* HTTP response caching (LRU)
-* Configuration file support
-* Access logging
-* Blacklisting and filtering
-* Load balancing
-* Unit and integration tests
-* IPv6 support
-* HTTP/1.1 Keep-Alive support
-* Partial send() handling
-* HTTPS CONNECT tunneling
-* Response compression
-
----
-
-## Technologies Used
-
-* C++17
-* Linux System Programming
-* POSIX Socket API
-* CMake
-* Docker
-* STL
-* Multithreading
+- [ ] HTTPS `CONNECT` tunneling with TLS pass-through
+- [ ] Zero-copy buffer forwarding using Linux `splice(2)`
+- [ ] Epoll-based event loop using `epoll_wait()` for comparison with the thread-pool architecture
+- [ ] LRU in-memory HTTP response caching
 
 ---
 
 ## License
 
-This project is open-source and intended for educational and learning purposes.
+Open-source under the MIT License.
