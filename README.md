@@ -6,7 +6,7 @@ A hardened, high-throughput forward HTTP proxy server built from scratch in mode
 
 ## Systems Architecture
 
-```
+```text
                ┌────────────────────────────────────────────────────────┐
                │                      ProxyServer                       │
                │                                                        │
