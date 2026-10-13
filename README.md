@@ -156,6 +156,35 @@ The server is intended to listen on port `8888` for this configuration. Ensure t
 
 ---
 
+## Design Trade-offs & Current Limitations
+
+This is a lightweight HTTP proxy prototype focused on socket programming,
+request parsing, upstream connections, and concurrent client handling. The
+current implementation does not provide a complete HTTP forwarding relay.
+
+### Current limitations
+
+- **HTTP request bodies:** Complete request-body relaying is out of scope for
+  the current prototype. The worker reads the request headers, but does not
+  reliably continue streaming subsequent body bytes to the upstream server.
+  POST/PUT uploads and chunked request bodies may therefore be incomplete or
+  fail.
+- **HTTPS `CONNECT`:** Full HTTPS tunneling is out of scope. The proxy does not
+  establish a working `200 Connection Established` tunnel and relay opaque TLS
+  bytes bidirectionally. Parsing an HTTPS destination is not equivalent to
+  implementing a CONNECT tunnel.
+- **Production readiness:** Do not treat this prototype as a production-ready
+  or unrestricted public forward proxy. Destination restrictions, access
+  controls, correct HTTP framing, and broader integration tests remain
+  important hardening work.
+
+### Design trade-offs
+
+The implementation favors a small, understandable networking pipeline and a
+bounded worker pool over full HTTP protocol support. This makes the project
+useful for learning TCP sockets, parsing, concurrency, and resource management,
+while keeping unsupported behavior explicit.
+
 ## Future Roadmap
 
 - [ ] HTTPS `CONNECT` tunneling with TLS pass-through
