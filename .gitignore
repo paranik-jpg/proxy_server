@@ -30,3 +30,8 @@ ProxyServer
 # Temporary files
 *.swp
 *.tmp
+
+# Windows / WSL metadata
+*:Zone.Identifier
+*.Identifier
+
