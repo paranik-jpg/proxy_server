@@ -20,10 +20,11 @@ Clients ───────┼────────┬───────
                │        ▼                                               │
                │  Worker Threads (hardware_concurrency)                 │
                │        │                                               │
-               │        ├── 1. Chunked recv() until \r\n\r\n (<= 8 KB)  │
+               │        ├── 1. Iterative recv() headers until \r\n\r\n  │
+               │        │      (<= 8 KB Slowloris ceiling)              │
                │        ├── 2. HTTP Header & Port Parsing               │
                │        ├── 3. POSIX getaddrinfo() DNS Resolution       │
-               │        ├── 4. Non-blocking/Timeout connect()           │
+               │        ├── 4. POSIX connect() with Timeout             │
                │        ├── 5. Reliable sendAll() (MSG_NOSIGNAL)        │
                │        └── 6. Bidirectional Streaming Pass-Through     │
                └──────────────────────────┬─────────────────────────────┘
@@ -31,6 +32,8 @@ Clients ───────┼────────┬───────
                                           ▼
                                    Upstream Web Server
 ```
+
+> **Visual Control Flow:** For step-by-step visual control flow and worker lifecycle diagrams, see [`FLOWCHARTS.md`](FLOWCHARTS.md).
 
 ---
 
@@ -75,6 +78,7 @@ Full analysis, diagnostic traces, and socket lifecycle metrics are documented in
 
 ```text
 proxy_server/
+├── FLOWCHARTS.md         # Visual Mermaid architecture & request control flow
 ├── docs/
 │   ├── BENCHMARK.md          # wrk latency profiles and Valgrind audit logs
 │   ├── CONCURRENCY.md        # Thread pool synchronization and backpressure
@@ -117,7 +121,16 @@ cmake --build build -j"$(nproc)"
 ./build/ProxyServer 8888
 ```
 
-### 2. Sanitizer Debug Build (ASan + UBSan)
+### 2. Manual Verification (`curl`)
+
+In a separate terminal, test forward proxy request relaying:
+
+```bash
+# Issue an HTTP request forwarded through the proxy
+curl -v -x http://localhost:8888 http://example.com/
+```
+
+### 3. Sanitizer Debug Build (ASan + UBSan)
 
 Instrumented with AddressSanitizer and UndefinedBehaviorSanitizer:
 
@@ -132,7 +145,7 @@ ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
   ./build_asan/ProxyServer 8888
 ```
 
-### 3. Valgrind File-Descriptor & Memory Audit
+### 4. Valgrind File-Descriptor & Memory Audit
 
 ```bash
 valgrind --tool=memcheck \
@@ -173,6 +186,10 @@ current implementation does not provide a complete HTTP forwarding relay.
   establish a working `200 Connection Established` tunnel and relay opaque TLS
   bytes bidirectionally. Parsing an HTTPS destination is not equivalent to
   implementing a CONNECT tunnel.
+- **IPv4-only upstream resolution:** While `HttpParser` supports IPv6 bracketed
+  authority formatting (`[::1]:port`), outbound resolution currently enforces
+  `AF_INET` in `getaddrinfo()`. Dual-stack IPv6 resolution is part of future
+  enhancements.
 - **Production readiness:** Do not treat this prototype as a production-ready
   or unrestricted public forward proxy. Destination restrictions, access
   controls, correct HTTP framing, and broader integration tests remain
