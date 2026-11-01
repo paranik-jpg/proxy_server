@@ -184,8 +184,7 @@ current implementation does not provide a complete HTTP forwarding relay.
   fail.
 - **IPv4-only upstream resolution:** While `HttpParser` supports IPv6 bracketed
   authority formatting (`[::1]:port`), outbound resolution currently enforces
-  `AF_INET` in `getaddrinfo()`. Dual-stack IPv6 resolution is part of future
-  enhancements.
+  `AF_INET` in `getaddrinfo()`.
 - **Production readiness:** Do not treat this prototype as a production-ready
   or unrestricted public forward proxy. Destination restrictions, access
   controls, correct HTTP framing, and broader integration tests remain
@@ -197,13 +196,6 @@ The implementation favors a small, understandable networking pipeline and a
 bounded worker pool over full HTTP protocol support. This makes the project
 useful for learning TCP sockets, parsing, concurrency, and resource management,
 while keeping unsupported behavior explicit.
-
-## Future Roadmap
-
-- [ ] HTTPS `CONNECT` tunneling with TLS pass-through
-- [ ] Zero-copy buffer forwarding using Linux `splice(2)`
-- [ ] Epoll-based event loop using `epoll_wait()` for comparison with the thread-pool architecture
-- [ ] LRU in-memory HTTP response caching
 
 ---
 
