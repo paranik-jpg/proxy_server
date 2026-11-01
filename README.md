@@ -1,5 +1,4 @@
 # High-Performance C++17 Multithreaded HTTP Proxy Server
-[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/paranik-jpg/badge.svg)](https://hub.xerj.org/contributors/paranik-jpg)
 
 A hardened, high-throughput forward HTTP proxy server built from scratch in modern C++17 and Linux POSIX system calls. Engineered for low-level systems reliability, featuring a bounded producer-consumer thread pool with backpressure rejection, non-blocking signal handling, reliable stream socket transmission, and memory/file-descriptor leak validation using AddressSanitizer and Valgrind.
 
