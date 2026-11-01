@@ -182,10 +182,6 @@ current implementation does not provide a complete HTTP forwarding relay.
   reliably continue streaming subsequent body bytes to the upstream server.
   POST/PUT uploads and chunked request bodies may therefore be incomplete or
   fail.
-- **HTTPS `CONNECT`:** Full HTTPS tunneling is out of scope. The proxy does not
-  establish a working `200 Connection Established` tunnel and relay opaque TLS
-  bytes bidirectionally. Parsing an HTTPS destination is not equivalent to
-  implementing a CONNECT tunnel.
 - **IPv4-only upstream resolution:** While `HttpParser` supports IPv6 bracketed
   authority formatting (`[::1]:port`), outbound resolution currently enforces
   `AF_INET` in `getaddrinfo()`. Dual-stack IPv6 resolution is part of future
