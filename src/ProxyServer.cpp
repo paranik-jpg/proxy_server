@@ -245,11 +245,11 @@ bool ProxyServer::start() {
 
 
     // Define the server address structure
-    struct sockaddr_in server_addr;                 // We are manually specifying an IPv4 address and port
-    memset(&server_addr, 0, sizeof(server_addr)); // Clear memory to avoid garbage data
-    server_addr.sin_family = AF_INET;             // IPv4
-    server_addr.sin_addr.s_addr = INADDR_ANY;     // Listen on all network interfaces (localhost, Wi-Fi, etc.) -> deeper => I.P.
-    server_addr.sin_port = htons(port);           // Convert 8080 to Network Byte Order
+    struct sockaddr_in server_addr;                // We are manually specifying an IPv4 address and port
+    memset(&server_addr, 0, sizeof(server_addr));  // Clear memory to avoid garbage data
+    server_addr.sin_family = AF_INET;              // IPv4
+    server_addr.sin_addr.s_addr = INADDR_ANY;      // Listen on all network interfaces (localhost, Wi-Fi, etc.) -> deeper => I.P.
+    server_addr.sin_port = htons(port);            // Convert 8080 to Network Byte Order
 
 
     // Bind the socket to the port
