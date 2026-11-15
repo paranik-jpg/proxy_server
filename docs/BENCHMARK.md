@@ -19,7 +19,7 @@
 ---
 
 ## 3. Bottleneck & System Diagnostics
-* **Upstream Serialization:** Upstream latency ceilings were determined by single-threaded upstream mock serialization rather than proxy thread contention.
+* **Upstream Serialization:** Upstream latency was limited by the mock server processing requests one at a time, not by proxy thread contention.
 * **TCP Reset & Broken Pipe Handling:** `wrk` client-side connection teardown (`RST`) triggers `EPIPE` (`errno = 32`). The proxy's `sendAll()` handles this cleanly via `MSG_NOSIGNAL` without raising unhandled `SIGPIPE` signals.
 
 ---
