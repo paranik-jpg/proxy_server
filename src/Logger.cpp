@@ -8,7 +8,8 @@ static std::mutex print_mutex;
 void Logger::info(const std::string& msg) {
 #if ENABLE_INFO_LOGGING
     std::lock_guard<std::mutex> lock(print_mutex);
-    std::cout << msg << '\n'; // '\n' avoids unnecessary flushes, std::endl auto flushes
+    // '\n' avoids unnecessary flushes, std::endl auto flushes
+    std::cout << msg << '\n'; 
 #endif
 }
 
