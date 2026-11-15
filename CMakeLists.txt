@@ -44,6 +44,3 @@ if(ENABLE_SANITIZERS)
 endif()
 
 target_include_directories(ProxyServer PRIVATE include)
-
-# Linux networking uses POSIX sockets.
-# No extra libraries are needed on modern Linux.
