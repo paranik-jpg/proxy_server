@@ -4,38 +4,38 @@
 #include <string>
 
 int main(int argc, char* argv[]) {
-  // Default port
-  int port = 8888; 
+    // Default port
+    int port = 8888; 
 
     if (argc > 2) {
-      std::cerr << "Usage: ./ProxyServer [port]\n";
-      return 1;
+        std::cerr << "Usage: ./ProxyServer [port]\n";
+        return 1;
     }
 
     if (argc == 2) {
         try {
-          std::string port_arg = argv[1];
-          std::size_t parsed_chars = 0;
-          int parsed_port = std::stoi(port_arg, &parsed_chars);
+            std::string port_arg = argv[1];
+            std::size_t parsed_chars = 0;
+            int parsed_port = std::stoi(port_arg, &parsed_chars);
 
-          if (parsed_chars != port_arg.size() || parsed_port < 1 || parsed_port > 65535) {
-            std::cerr << "Error: Invalid port. Use 1-65535.\n ";
-            return 1;
-          }
+            if (parsed_chars != port_arg.size() || parsed_port < 1 || parsed_port > 65535) {
+                std::cerr << "Error: Invalid port. Use 1-65535.\n ";
+                return 1;
+            }
 
           port = parsed_port;
-        } catch(const std::exception&) {
+        } 
+        catch(const std::exception&) {
             std::cerr << "Error: Invalid port. Use 1-65535.\n ";
             return 1;
         }
     }
-
-  ProxyServer server(port);
-
-  if (!server.start()) {
-    // Abnormal termination OR Error Occured
-    return 1;  
-  }
+    
+    ProxyServer server(port);
+    if (!server.start()) {
+        // Abnormal termination OR Error Occured
+        return 1;  
+    }
 
     // Successful Execution
     return 0;                
