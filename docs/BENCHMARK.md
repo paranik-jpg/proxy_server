@@ -29,4 +29,4 @@
 * **Valgrind Memcheck:**
   * Definitely Lost: `0 bytes in 0 blocks`
   * Indirectly Lost: `0 bytes in 0 blocks`
-  * Open Sockets / File Descriptors at Exit: Verified clean release of worker sockets, returning to standard streams (`0`, `1`, `2`).
+  * Open Sockets / File Descriptors at Exit: Verified clean release of worker sockets, returning to standard streams (`0` (`stdin`), `1` (`stdout`), `2` (`stderr`)).
