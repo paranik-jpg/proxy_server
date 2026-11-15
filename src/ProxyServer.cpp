@@ -5,7 +5,6 @@
 
 #include <sys/socket.h> // Contains core socket system calls (socket, bind, listen, accept)
 #include <netinet/in.h> // Contains structures to store IP addresses and ports
-#include <cstring>      // For clearing memory structures (memset)
 #include <netdb.h>      // For addrinfo
 #include <unistd.h>     // Contains system utilities like close()
 #include <arpa/inet.h>  // For inet_ntoa()
@@ -63,7 +62,7 @@ void ProxyServer::handleClient (int client_fd) {
 
     constexpr size_t MAX_HEADER_SIZE = 8192;
 
-    // recv() pulls data recieved from client_fd from the Kernel into your application memory
+    // recv() pulls data recieved from client_fd from the Kernel into application memory
     while (request.find("\r\n\r\n") == std::string::npos) {
         if (request.size() > MAX_HEADER_SIZE) {
             Logger::error("[ERROR] HTTP headers exceed maximum size.");
@@ -71,7 +70,8 @@ void ProxyServer::handleClient (int client_fd) {
             return;
         }
 
-        valread = recv(client_fd, buffer, sizeof(buffer), 0); // Returns number of bytes read
+        // recv() returns number of bytes read
+        valread = recv(client_fd, buffer, sizeof(buffer), 0); 
 
         // EDGE CASE GUARD: Did the browser disconnect or send nothing?
         if (valread <= 0) {
@@ -103,15 +103,16 @@ void ProxyServer::handleClient (int client_fd) {
     std::string portStr = std::to_string(target_port);
 
 
-    // DNS Resolution (The "Phonebook" lookup)
+    // DNS Resolution
     struct addrinfo hints{}, *res;    // We want the system to resolve address
-    hints.ai_family = AF_INET;       // Support IPv4
-    hints.ai_socktype = SOCK_STREAM; // TCP
+    hints.ai_family = AF_INET;        // Support IPv4
+    hints.ai_socktype = SOCK_STREAM;  // TCP
 
 
-    // By getaddrinfo, OS will filter addresses with 'hints'-type and the result will be stored as a LL,
+    // By getaddrinfo, OS will filter addresses with 'hints'-type and the result will be stored as a LinkedList,
     // res will point to the Head of that LL
-    if (getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) { // c_str() is same as (const char*)
+    // c_str() is same as (const char*)
+    if (getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) { 
         Logger::error("[ERROR] Could not resolve host: " + host);
         close(client_fd);
         return;
@@ -123,7 +124,7 @@ void ProxyServer::handleClient (int client_fd) {
     int remote_fd = -1;
     int connected = 0;
 
-    // Looping over LL
+    // Looping over LinkedList
     for (p = res; p != NULL; p = p->ai_next) {
         // Create a new socket for this attempt
         remote_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -193,8 +194,9 @@ void ProxyServer::handleClient (int client_fd) {
     else {
         // EAGAIN -> Resource temporarily unavailable. Try again later.
         // EWOULDBLOCK -> The operation would block if it continued.
-        // EAGAIN = EWOULDBLOCK on many systems!!!
-        if (errno == EAGAIN || errno == EWOULDBLOCK) { // errno -> thread-local integer variable maintained by the operating system.
+        // EAGAIN = EWOULDBLOCK on many systems
+        // errno -> thread-local integer variable maintained by the operating system.
+        if (errno == EAGAIN || errno == EWOULDBLOCK) { 
             Logger::info("[RELAY COMPLETE] Connection timed out after sending " + std::to_string(totalBytes) + " bytes in " + std::to_string(chunks) +
             " chunks.");
         }
@@ -203,10 +205,10 @@ void ProxyServer::handleClient (int client_fd) {
         }
     }
 
-    // Always close your outbound descriptors
+    // Close the outbound descriptors
     close(remote_fd);
 
-    // Cleanup: Close descriptor
+    // Close the descriptor
     close(client_fd);
 }
 
@@ -246,12 +248,12 @@ bool ProxyServer::start() {
     // Define the server address structure
     struct sockaddr_in server_addr{};          // We are manually specifying an IPv4 address and port
     server_addr.sin_family = AF_INET;          // IPv4
-    server_addr.sin_addr.s_addr = INADDR_ANY;  // Listen on all network interfaces (localhost, Wi-Fi, etc.) -> deeper => I.P.
+    server_addr.sin_addr.s_addr = INADDR_ANY;  // INADDR_ANY => Listen on all network interfaces (localhost, Wi-Fi, etc.)
     server_addr.sin_port = htons(port);        // Convert port number to Network Byte Order
 
 
     // Bind the socket to the port
-    // Assigns an address to the socket
+    // Bind => Assign an address to the socket
     if (bind (server_fd, (struct sockaddr*)& server_addr, sizeof(server_addr)) < 0) { // bind accepts only sockaddr*
         Logger::error("[ERROR] Failed to bind to port " + std::to_string(port) + "!");
         close(server_fd);
@@ -262,7 +264,7 @@ bool ProxyServer::start() {
     Logger::info("[SUCCESS] Socket bound to port " + std::to_string(port));
 
 
-    // Start listening (10 is the backlog size -> how many connections can wait in queue before refusal)
+    // Start listening (128 is the backlog size -> how many connections can wait in queue before refusal)
     if (listen (server_fd, 128) < 0) {
         Logger::error("[ERROR] Failed to start listening!");
         close(server_fd);
@@ -277,7 +279,8 @@ bool ProxyServer::start() {
         Logger::info("[WAITING] Ready for connection...");
         // This will pause execution until a browser makes a request
 
-        int client_fd = accept(server_fd, nullptr, nullptr); // nullptr -> ignore client's address information
+        // nullptr => ignore client's address information
+        int client_fd = accept(server_fd, nullptr, nullptr); 
         // client_fd is a new socket fd !!!
 
         if (client_fd < 0) {
