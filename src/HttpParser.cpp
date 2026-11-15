@@ -139,7 +139,7 @@ std::string HttpParser::extractURL(const std::string& request) {
     return request.substr(pos1 + 1, pos2 - pos1 - 1);
 }
 
-// Gives Host => "localhost:8888" -> "localhost"
+// "localhost:8888" -> "localhost"
 std::string HttpParser::extractHost(const std::string& request) {
   std::string authority = getAbsoluteAuthority(request);
 
