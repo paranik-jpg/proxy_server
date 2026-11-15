@@ -13,7 +13,7 @@
     # Copy project files
     COPY . .
 
-    # Build release binary with logging gate
+    # Build release binary
     RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DENABLE_INFO_LOGGING=0 -O3" && \
         cmake --build build -j$(nproc)
 
