@@ -290,7 +290,8 @@ bool ProxyServer::start() {
 
         Logger::info("[THREADING] Spawning worker thread for FD: " + std::to_string(client_fd));
 
-        bool enqueued = pool.enqueue ([this, client_fd]() { // 'this' is used to use 'handleClient()'
+        // 'this' allows the lambda to access the current object's member functions, such as handleClient()
+        bool enqueued = pool.enqueue ([this, client_fd]() { 
             handleClient(client_fd);
         });
 
