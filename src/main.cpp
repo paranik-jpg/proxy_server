@@ -4,7 +4,8 @@
 #include <string>
 
 int main(int argc, char* argv[]) {
-  int port = 8888; // Default port
+  // Default port
+  int port = 8888; 
 
     if (argc > 2) {
       std::cerr << "Usage: ./ProxyServer [port]\n";
@@ -12,7 +13,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (argc == 2) {
-        try{
+        try {
           std::string port_arg = argv[1];
           std::size_t parsed_chars = 0;
           int parsed_port = std::stoi(port_arg, &parsed_chars);
@@ -31,9 +32,11 @@ int main(int argc, char* argv[]) {
 
   ProxyServer server(port);
 
-  if(!server.start()) {
-    return 1;  // Abnormal termination OR Error Occured
+  if (!server.start()) {
+    // Abnormal termination OR Error Occured
+    return 1;  
   }
 
-    return 0;                // Successful Execution
+    // Successful Execution
+    return 0;                
 }
