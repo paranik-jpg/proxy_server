@@ -8,7 +8,7 @@
 
 ## 2. Bounded Queue & Backpressure Mechanics
 * **Capacity Limit:** Queue capacity capped at 1,000 tasks.
-* **Backpressure Policy:** Submissions into a saturated queue wait for slot availability via a timed predicate (`std::chrono::milliseconds(100)`). If saturation persists, `enqueue()` returns `false`, causing `ProxyServer` to drop the client descriptor to safeguard process memory.
+* **Backpressure Policy:** If the queue is full, submissions wait up to 100 ms for a free slot. If no slot becomes available, `enqueue()` returns `false`, and `ProxyServer` closes the client connection to prevent excessive memory usage.
 
 ---
 
